@@ -22,3 +22,5 @@ curl --location --request POST 'https://mxmx.app/qshare/api/upload' \
 	"content": "Text or link (gets automatically redirected)"
 }'
 ```
+
+Because the QR code has been encrypted via the public key, it can be decrypted with and only with the private key. Therefore, during the content upload, the code gets decrypted and checked if it equals the code generated during the startup. This way, only valid, server-generated codes are accepted.
