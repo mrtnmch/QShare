@@ -8,12 +8,4 @@ WORKDIR $GOPATH/src/github.com/mxmxcz/qshare/
 COPY . .
 
 RUN go test ./...
-RUN go build -o /go/bin/qshare ./cmd/qshare
-COPY static /go/bin/static
-
-FROM scratch
-WORKDIR /
-COPY --from=build /go/bin/qshare /qshare
-COPY --from=build /go/bin/static /static
-EXPOSE 8080
-ENTRYPOINT ["./qshare"]
+CMD go build -o /go/bin/qshare ./cmd/qshare

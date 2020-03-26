@@ -99,16 +99,26 @@
     function getImage() {
         var url = './api/qr';
         var xhr = new XMLHttpRequest();
-
-        xhr.open('GET', url, true);
-        xhr.send();
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState === 4 && xhr.status === 200) {
-                let response = JSON.parse(xhr.response);
-                document.getElementById("qr-code").setAttribute('src', 'data:image/png;base64,' + response["base64image"]);
-                tryRequest(response["code"]);
+        xhr.onload = function() {
+            var reader = new FileReader();
+            reader.onloadend = function() {
+                document.getElementById("qr-code").setAttribute('src', reader.result);
+                var headers = xhr.getAllResponseHeaders();
+                var arr = headers.trim().split(/[\r\n]+/);
+                var headerMap = {};
+                arr.forEach(function (line) {
+                    var parts = line.split(': ');
+                    var header = parts.shift();
+                    var value = parts.join(': ');
+                    headerMap[header] = value;
+                });
+                tryRequest(headerMap['x-qshare-key']);
             }
+            reader.readAsDataURL(xhr.response);
         };
+        xhr.open('GET', url);
+        xhr.responseType = 'blob';
+        xhr.send();
     }
 
     getImage();

@@ -15,7 +15,7 @@ RUN go build -o /go/bin/qshare ./cmd/qshare
 COPY static /go/bin/static
 
 FROM scratch
-WORKDIR /qshare
+WORKDIR /
 COPY --from=build /go/bin/qshare /qshare
 COPY --from=build /go/bin/static /static
 EXPOSE 8080

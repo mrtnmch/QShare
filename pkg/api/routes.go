@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
-	"github.com/mxmxcz/qshare/pkg/persistence"
 	"github.com/mxmxcz/qshare/pkg/qr"
+	"github.com/mxmxcz/qshare/pkg/repository"
+	"github.com/mxmxcz/qshare/pkg/secret"
 	"math/rand"
 	"net/http"
 	"time"
@@ -16,10 +17,11 @@ const (
 	PathGenerateQR    = "/qr"
 	PathUploadContent = "/upload"
 	PathFetchContent  = "/fetch"
+	HeaderKey         = "X-QShare-Key"
 )
 
 type UploadRequest struct {
-	Code     string    `json:"code"`
+	Key      string    `json:"code"`
 	Content  string    `json:"content"`
 	Uploaded time.Time `json:"-"`
 }
@@ -30,18 +32,22 @@ type QRResponse struct {
 }
 
 type FetchRequest struct {
-	Code string `json:"code"`
+	Key string `json:"code"`
 }
 
-func GetRoutes(generator qr.Generator, store persistence.Manager) func(r chi.Router) {
+type FetchResponse struct {
+	Content string `json:"content"`
+}
+
+func GetRoutes(imageGenerator qr.Generator, secretProvider secret.Provider, validator secret.Validator, envelopeRepository repository.EnvelopeRepository) func(r chi.Router) {
 	return func(r chi.Router) {
-		r.Get(PathGenerateQR, handleQRGenerator(generator))
-		r.Post(PathUploadContent, handleUpload(generator, store))
-		r.Post(PathFetchContent, handleFetch(store))
+		r.Get(PathGenerateQR, handleQRGenerator(imageGenerator, secretProvider))
+		r.Post(PathUploadContent, handleUpload(validator, envelopeRepository))
+		r.Post(PathFetchContent, handleFetch(envelopeRepository))
 	}
 }
 
-func handleFetch(store persistence.Manager) http.HandlerFunc {
+func handleFetch(store repository.EnvelopeRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fetch := FetchRequest{}
 		err := render.DecodeJSON(r.Body, &fetch)
@@ -51,15 +57,15 @@ func handleFetch(store persistence.Manager) http.HandlerFunc {
 			return
 		}
 
-		result, ok := store.Get(fetch.Code)
+		result := store.Get(fetch.Key)
 
-		if !ok {
+		if result == nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		marshal, _ := json.Marshal(result)
+		marshal, _ := json.Marshal(FetchResponse{string(result.Content)})
 		_, err = w.Write(marshal)
 
 		if err != nil {
@@ -67,11 +73,11 @@ func handleFetch(store persistence.Manager) http.HandlerFunc {
 			return
 		}
 
-		store.Remove(fetch.Code)
+		store.Remove(fetch.Key)
 	}
 }
 
-func handleUpload(generator qr.Generator, store persistence.Manager) http.HandlerFunc {
+func handleUpload(validator secret.Validator, store repository.EnvelopeRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		upload := UploadRequest{}
 
@@ -82,16 +88,14 @@ func handleUpload(generator qr.Generator, store persistence.Manager) http.Handle
 			return
 		}
 
-		err2 := generator.Validate(upload.Code)
-
-		if err2 != nil {
+		if !validator.IsValid([]byte(upload.Key)) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		store.Add(persistence.Item{
-			Code:    upload.Code,
-			Content: upload.Content,
+		store.Add(&repository.Envelope{
+			Key:     upload.Key,
+			Content: []byte(upload.Content),
 			Created: time.Time{},
 			Timeout: Timeout,
 		})
@@ -100,25 +104,27 @@ func handleUpload(generator qr.Generator, store persistence.Manager) http.Handle
 	}
 }
 
-func handleQRGenerator(generator qr.Generator) http.HandlerFunc {
+func handleQRGenerator(imageGenerator qr.Generator, provider secret.Provider) http.HandlerFunc {
 	rand.Seed(time.Now().UnixNano())
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		img, err := generator.Generate()
+		key, err := provider.Generate()
 
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		response := &QRResponse{
-			Code:        img.Code,
-			Base64Image: img.Base64Image,
+		png, err := imageGenerator.NewPNGImage(key)
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
-		marshal, _ := json.Marshal(&response)
-		w.Header().Add("Content-Type", "application/json")
-		_, err = w.Write(marshal)
+		w.Header().Add("Content-Type", "image/png")
+		w.Header().Add(HeaderKey, string(key))
+		_, err = w.Write(png.Content)
 
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
