@@ -1,10 +1,11 @@
 # QShare
 
-PoC of sharing data from an iOS device to a browser without an account or a database, based on RSA and QR codes.
+PoC of sharing data from an iOS (or Android) device to a browser without an account or a database, based on RSA and QR codes. Only text is supported for now.
 
 1. Download and install the iOS extension: https://www.icloud.com/shortcuts/db03f99f0a594b4896357424422226b6
 2. Go to https://mxmx.app/qshare
 3. Share any text via the system dialog and pick "QShare". Once the camera app is open, scan the QR.
+4. The content gets passed into the browser. If it's a link, the browser is redirected right away.
 
 ## How it works
 
